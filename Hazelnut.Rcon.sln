@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hazelnut.Rcon", "Hazelnut.Rcon\Hazelnut.Rcon.csproj", "{E294CB55-15CB-4AF9-8A28-0FA1698E5E95}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hazelnut.Rcon.Client", "Hazelnut.Rcon.Client\Hazelnut.Rcon.Client.csproj", "{B6125822-35E3-4691-91D7-C175C4DBB544}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hazelnut.Rcon.Server.Example", "Hazelnut.Rcon.Server.Example\Hazelnut.Rcon.Server.Example.csproj", "{10C3A775-16E6-4A5B-AEA2-31A54439F701}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E294CB55-15CB-4AF9-8A28-0FA1698E5E95}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E294CB55-15CB-4AF9-8A28-0FA1698E5E95}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E294CB55-15CB-4AF9-8A28-0FA1698E5E95}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E294CB55-15CB-4AF9-8A28-0FA1698E5E95}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B6125822-35E3-4691-91D7-C175C4DBB544}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B6125822-35E3-4691-91D7-C175C4DBB544}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B6125822-35E3-4691-91D7-C175C4DBB544}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B6125822-35E3-4691-91D7-C175C4DBB544}.Release|Any CPU.Build.0 = Release|Any CPU
+		{10C3A775-16E6-4A5B-AEA2-31A54439F701}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{10C3A775-16E6-4A5B-AEA2-31A54439F701}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{10C3A775-16E6-4A5B-AEA2-31A54439F701}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{10C3A775-16E6-4A5B-AEA2-31A54439F701}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
