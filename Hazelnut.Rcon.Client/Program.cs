@@ -49,7 +49,7 @@ RconClient client;
 try
 {
     Console.WriteLine("Connecting...");
-    client = await RconClient.ConnectAsync(new IPEndPoint(hostAddr, portNumber), password);
+    client = await RconClient.ConnectToAsync(new IPEndPoint(hostAddr, portNumber), password);
 }
 catch (Exception ex)
 {

@@ -1,35 +1,39 @@
 ﻿using System.Net;
 using System.Net.Sockets;
-using System.Text;
 
 namespace Hazelnut.Rcon;
 
-public delegate string RconReceivedEventHandler(RconReceiver sender, string received);
+public delegate void RconConnectedEventHandler(RconReceiver sender, EndPoint remoteEndPoint, bool isAuthed);
+public delegate void RconDisconnectedEventHandler(RconReceiver sender, EndPoint remoteEndPoint);
+public delegate string RconReceivedEventHandler(RconReceiver sender, EndPoint remoteEndPoint, string received);
 
 public class RconReceiver : IDisposable
 {
     private readonly Socket _listenSocket;
     private readonly string _password;
-    private CancellationTokenSource? _cancellationTokenSource;
 
+    private Thread? _ownerThread;
+    private CancellationTokenSource? _cancellationToken;
+
+    public event RconConnectedEventHandler? Connected;
+    public event RconDisconnectedEventHandler? Disconnected;
     public event RconReceivedEventHandler? Received;
 
-    public bool IsRunning => _cancellationTokenSource is { IsCancellationRequested: false };
-
+    public bool IsRunning => _cancellationToken is { IsCancellationRequested: false };
+    
     public RconReceiver(EndPoint endPoint, string password)
     {
         _password = password;
 
         _listenSocket = new Socket(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
         _listenSocket.Bind(endPoint);
-        _listenSocket.Listen(200);
     }
-
+    
     ~RconReceiver()
     {
         Dispose(false);
     }
-
+    
     public void Dispose()
     {
         Dispose(true);
@@ -38,24 +42,28 @@ public class RconReceiver : IDisposable
 
     protected virtual void Dispose(bool disposing)
     {
-        if (_cancellationTokenSource?.IsCancellationRequested == true)
+        if (_cancellationToken?.IsCancellationRequested == true)
             throw new ObjectDisposedException(GetType().Name);
+        _cancellationToken?.Cancel();
         
-        _cancellationTokenSource?.Cancel();
+        _ownerThread?.Interrupt();
 
         _listenSocket.Close();
         _listenSocket.Dispose();
     }
 
-    public void Start()
+    public void Start(int backlog = 200)
     {
-        if (_cancellationTokenSource?.IsCancellationRequested == true)
+        if (_cancellationToken?.IsCancellationRequested == true)
             throw new ObjectDisposedException(GetType().Name);
-        if (_cancellationTokenSource != null)
+        if (_cancellationToken != null)
             throw new InvalidOperationException("Server already started.");
-        
-        _cancellationTokenSource = new CancellationTokenSource();
-        _listenSocket.BeginAccept(OnSocketReceived, null);
+
+        _cancellationToken = new CancellationTokenSource();
+        _listenSocket.Listen(backlog);
+        _listenSocket.BeginAccept(OnSocketReceived, this);
+
+        _ownerThread = Thread.CurrentThread;
     }
 
     public void Run()
@@ -75,66 +83,83 @@ public class RconReceiver : IDisposable
         }
     }
 
-    protected virtual string OnCommandReceived(string command)
+    protected virtual void OnClientConnected(EndPoint remoteEndPoint, bool isAuthed)
     {
-        return Received?.Invoke(this, command)
+        Connected?.Invoke(this, remoteEndPoint, isAuthed);
+    }
+
+    protected virtual void OnClientDisconnected(EndPoint remoteEndPoint)
+    {
+        Disconnected?.Invoke(this, remoteEndPoint);
+    }
+
+    protected virtual string OnCommandReceived(EndPoint remoteEndPoint, string command)
+    {
+        return Received?.Invoke(this, remoteEndPoint, command)
                ?? "[RCON] Command Handler is not registered.";
     }
 
-    private async void OnSocketReceived(IAsyncResult result)
+    private static async void OnSocketReceived(IAsyncResult result)
     {
-        using var acceptedSocket = _listenSocket.EndAccept(result);
-        _listenSocket.BeginAccept(OnSocketReceived, null);
-
-        var cancellationToken = _cancellationTokenSource!.Token;
-
-        await using var acceptedSocketStream = new NetworkStream(acceptedSocket);
-        var authPacketResult = await RconPacket.TryParseAsync(acceptedSocketStream, cancellationToken);
-
-        if (authPacketResult is not { PacketType: RconPacketType.Login } authPacket)
+        if (result.AsyncState is not RconReceiver receiver)
             return;
 
-        var isAuthSucceed = authPacket.PayloadString.Equals(_password);
-        var authResultPacket = new RconPacket(isAuthSucceed ? authPacket.RequestId : -1, Array.Empty<byte>(),
-            RconPacketType.RunCommand);
-        await acceptedSocketStream.WriteAsync(authResultPacket.ToArray(), cancellationToken);
+        using var acceptedSocket = receiver._listenSocket.EndAccept(result);
+        var remoteEndPoint = acceptedSocket.RemoteEndPoint!;
+        receiver._listenSocket.BeginAccept(OnSocketReceived, null);
 
-        if (!isAuthSucceed)
+        var cancellationToken = receiver._cancellationToken!.Token;
+
+        await using var acceptedNetworkStream = new NetworkStream(acceptedSocket);
+        if (!RconPacket.TryParse(acceptedNetworkStream, out var authRequest))
             return;
-        
-        await RunServerSession(acceptedSocket, acceptedSocketStream, cancellationToken);
-    }
 
-    private async ValueTask RunServerSession(Socket acceptedSocket, Stream acceptedSocketStream, CancellationToken cancellationToken)
-    {
+        if (authRequest.PacketType != RconPacketType.Login)
+            return;
+
+        var isAuthSucceed = authRequest.Payload.Equals(receiver._password);
+        var authResponse = new RconPacket(
+            isAuthSucceed
+                ? authRequest.RequestId
+                : -1,
+            RconPacketType.RunCommand,
+            string.Empty);
+
+        authResponse.WriteTo(acceptedNetworkStream);
+
+        receiver.OnClientConnected(remoteEndPoint, isAuthSucceed);
+
         try
         {
-            while (true)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                    break;
+            if (!isAuthSucceed)
+                return;
 
-                var receivedPacketResult = await RconPacket.TryParseAsync(acceptedSocketStream, cancellationToken);
-
-                if (cancellationToken.IsCancellationRequested)
-                    break;
-
-                if (receivedPacketResult is { PacketType: RconPacketType.RunCommand } receivedPacket)
-                {
-                    var payload = OnCommandReceived(receivedPacket.PayloadString);
-                    var sendPacket = new RconPacket(receivedPacket.RequestId, payload);
-                    await acceptedSocketStream.WriteAsync(sendPacket.ToArray(), cancellationToken);
-                }
-                else
-                {
-                    var sendPacket = new RconPacket(-1, "invalid packet received.");
-                    await acceptedSocketStream.WriteAsync(sendPacket.ToArray(), cancellationToken);
-                }
-            }
+            await Task.Factory.StartNew(() => { RunServerSession(receiver, remoteEndPoint, acceptedNetworkStream); },
+                cancellationToken);
         }
         catch (IOException)
         {
             // Terminated Client
+        }
+        finally
+        {
+            receiver.OnClientDisconnected(remoteEndPoint);
+        }
+    }
+
+    private static void RunServerSession(RconReceiver receiver, EndPoint remoteEndPoint, Stream acceptedNetworkStream)
+    {
+        while (true)
+        {
+            if (!RconPacket.TryParse(acceptedNetworkStream, out var receivedPacket))
+                break;
+
+            var sendPacket = new RconPacket(receivedPacket.RequestId, RconPacketType.Response,
+                receivedPacket.PacketType == RconPacketType.RunCommand
+                    ? receiver.OnCommandReceived(remoteEndPoint, receivedPacket.Payload)
+                    : "invalid packet received"
+            );
+            sendPacket.WriteTo(acceptedNetworkStream);
         }
     }
 }
