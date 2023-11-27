@@ -106,7 +106,7 @@ public class RconReceiver : IDisposable
 
         using var acceptedSocket = receiver._listenSocket.EndAccept(result);
         var remoteEndPoint = acceptedSocket.RemoteEndPoint!;
-        receiver._listenSocket.BeginAccept(OnSocketReceived, null);
+        receiver._listenSocket.BeginAccept(OnSocketReceived, receiver);
 
         var cancellationToken = receiver._cancellationToken!.Token;
 
